@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+
+    body {
+      font: 10px sans-serif;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .nav {
+        font-size: 16px;
+    }
+    .navbg {
+        fill: white;
+        stroke: black;
+    }
+
+
+    .axis path,
+    .axis line {
+      fill: none;
+      stroke: #000;
+      shape-rendering: crispEdges;
+    }
+
+    .bar {
+      fill: skyblue;
+    }
+
+    .label {
+      color: black;
+      font-family: Verdana, Arial, Helvetica, sans-serif;
+      font-size:11px;
+      font-weight:bold;
+    }
+
+    .x.axis path {
+    }
+
+    </style>
+  </head>
+<body>
+  <script src="/lawdi/js/d3.v3.min.js"></script>
+<script>
+  var dataUri = "/lawdi/data/count-type?";
+  var query = window.location.search;
+  var q = {};
+  if (query.length > 0) {
+    query = query.substr(1).split("&");
+    for (var i = 0; i < query.length; i++) {
+      query[i] = query[i]. split("=");
+      q[query[i][0]] = query[i][1];
+    }
+    if (q.t) {dataUri += "t=" + encodeURIComponent(q.t)}
+    if (q.s) {dataUri += "&s=" + encodeURIComponent(q.s)}
+    if (q.p) {dataUri += "&p=" + encodeURIComponent(q.p)}
+    if (q.o) {dataUri += "&o=" + encodeURIComponent(q.o)}
+    if (q.off) {q.off = +q.off; dataUri += "&off=" + q.off}
+    if (q.len) {q.len = +q.len; dataUri += "&len=" + q.len}
+  }
+
+
+
+  var margin = {top: 20, right: 20, bottom: 30, left: 40},
+      width = 960 - margin.left - margin.right,
+      height = 700 - margin.top - margin.bottom;
+
+  var y = d3.scale.ordinal()
+      .rangeRoundBands([0, height], .1);
+
+  var x = d3.scale.linear()
+      .range([0, width]);
+
+  var xAxis = d3.svg.axis()
+      .scale(x)
+      .orient("bottom");
+
+  var yAxis = d3.svg.axis()
+      .tickValues([])
+      .scale(y)
+      .orient("left");
+
+  var svg = d3.select("body").append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+  d3.tsv(dataUri, function(error, data) {
+    data.forEach(function(d) {
+      d.total = +d.total;
+    });
+
+    var nav = {offset:q.off?q.off:0,length:q.len?q.len:20};
+
+    if (data.length > nav.length && (q.s || q.p || q.o)) {
+      data.pop();
+      nav.next = true;
+    }
+    if (nav.offset > 0) {
+      nav.previous = true;
+    }
+
+    y.domain(data.map(function(d) { return d.uri; }));
+    x.domain([0, d3.max(data, function(d) { return d.total; })]);
+
+    svg.append("g")
+        .attr("class", "x axis")
+        .attr("transform", "translate(0," + height + ")")
+        .call(xAxis);
+
+    svg.append("g")
+        .attr("class", "y axis")
+        .call(yAxis);
+
+    svg.selectAll(".bar")
+        .data(data)
+      .enter().append("rect")
+        .attr("class", "bar")
+        .attr("y", function(d) { return y(d.uri); })
+        .attr("height", y.rangeBand())
+        .attr("x", 0)
+        .attr("width", function(d) {
+          return x(d.total);
+        });
+
+    svg.selectAll(".label")
+        .data(data)
+      .enter().append("g")
+        .attr("class", "label")
+        .each(function(d, i) {
+          var g = d3.select(this);
+          var t = g.append("text");
+          t.attr("y", function(d) { return y(d.uri) + (y.rangeBand() -3); })
+            .attr("x", 3)
+          if (d.uri.match(/^http/) && (q.s || q.o)) {
+            t = t.append("a")
+            .attr("xlink:href", "/lawdi/force-graph.html?s=" + encodeURIComponent(d.uri))
+            .attr("target", "_blank");
+          }
+          t.text(function(d) { return d.uri + " (" + d.total + ") ";})
+              .style("color", "black");
+          if (q.t && (!q.s && !q.p && !q.o)) {
+            t.append("tspan").text(" [");
+            t.append("a")
+            .attr("xlink:href", "/lawdi/browse/count-type?t=" + encodeURIComponent(d.uri) + "&s=true")
+             .text("subject");
+            t.append("tspan").text(" | ");
+            t.append("a")
+              .attr("xlink:href", "/lawdi/browse/count-type?t=" + encodeURIComponent(d.uri) + "&p=true")
+              .text("property");
+            t.append("tspan").text(" | ");
+            t.append("a")
+              .attr("xlink:href", "/lawdi/browse/count-type?t=" + encodeURIComponent(d.uri) + "&o=true")
+              .text("object");
+            t.append("tspan").text("]");
+          }
+
+        });
+
+      if (nav.previous || nav.next) {
+        var navgrp = svg.append("g")
+          .attr("class","nav");
+        var navbg = navgrp.append("rect")
+          .attr("class", "navbg")
+          .attr("x","-3")
+          .attr("y","-1.1em")
+          .attr("rx","3")
+          .attr("ry","3");
+        var navtxt = navgrp.append("text");
+        var link = "count-type?t=" + q.t;
+        var prev,next;
+        if (q.s) {link += "&s=true";}
+        if (q.p) {link += "&p=true";}
+        if (q.o) {link += "&o=true";}
+        if (nav.previous) { prev = link + "&off=" + (q.off - (q.len?q.len:20));}
+        if (nav.next) {next  = link + "&off=" + (q.off?q.off + (q.len?q.len:20):(q.len?q.len:20));}
+        if (nav.previous) {
+          navtxt.append("a")
+            .attr("xlink:href",prev)
+            .text("previous");
+        }
+        if (nav.previous && nav.next) {
+          navtxt.append("tspan")
+            .text(" | ");
+        }
+        if (nav.next) {
+          navtxt.append("a")
+            .attr("xlink:href",next)
+            .text("next");
+        }
+        navgrp.attr("transform","translate(" + (width - 120) + "," + (height - 30) + ")");
+        navbg
+          .attr("width", navtxt.node().getBBox().width + 6)
+          .attr("height", navtxt.node().getBBox().height + 6);
+      }
+    });
+
+
+
+</script>
+</body>
+</html>
