@@ -13,8 +13,25 @@
         font-size: 18px;
     }
 
-    .label,.labelbg {
-        display:none;
+    .label {
+        display: none;
+    }
+    .showlabel body {
+        background: white;
+        border: thin solid gray;
+        font-family: Verdana, Arial, Helvetica, sans-serif;
+        font-size: 11px;
+        padding: 5px;
+        margin: 0px;
+    }
+
+    .showlabel span {
+        overflow:hidden;
+        margin-right: -5px;
+    }
+
+    .showlabel a {
+       color: black;
     }
 
     .showlabelbg {
@@ -33,10 +50,13 @@
       stroke-opacity: .6;
     }
 
-    path.link {
-      fill: none;
-      stroke: #666;
-      stroke-width: 1.5px;
+    line.highlight {
+      stroke:dodgerblue;
+      stroke-opacity: 1;
+    }
+    circle.highlight {
+      stroke:dodgerblue;
+      stroke-width:3px;
     }
 
     </style>
@@ -50,16 +70,18 @@
       var sparql = "PREFIX foaf: <http://xmlns.com/foaf/0.1/> "
       sparql +=    "CONSTRUCT { <" + query + "> ?p ?o . "
       sparql +=    "?o foaf:name ?n . "
-      sparql +=    "?o <http://nomisma.org/id/description> ?nmr . "
+      sparql +=    "?o <http://nomisma.org/id/description> ?nmd . "
+      sparql +=    "?o <http://www.opengis.net/gml/pos> ?nmf . "
       sparql +=    "?s2 ?p2 <" + query + "> } "
       sparql +=    "FROM <urn:lawdi:data> "
       sparql +=    "WHERE { {<" + query + "> ?p ?o "
       sparql +=    "OPTIONAL {?o foaf:name ?n} "
-      sparql +=    "OPTIONAL {?o <http://nomisma.org/id/description> ?nmr } }"
+      sparql +=    "OPTIONAL {?o <http://nomisma.org/id/description> ?nmd } "
+      sparql +=    "OPTIONAL {?o <http://www.opengis.net/gml/pos> ?nmf } }"
       sparql +=    "UNION {?s2 ?p2 <" + query + ">} }";
       var jsonUri = "/sparql?query=" + encodeURIComponent(sparql);
 
-      var width = 1020,
+      var width = 1040,
           height = 700;
 
       var nodeTypes = ["uri", "center", "bnode", "literal", "property", "type"];
@@ -69,14 +91,18 @@
           .range(colorbrewer.Accent[8]);
 
       var force = d3.layout.force()
-          .charge(-150)
-          .linkDistance(60)
+          .charge(-100)
+          .linkDistance(50)
           .size([width, height]);
 
       var svg = d3.select("body").append("svg")
           .attr("width", width)
           .attr("height", height);
 
+      var makeId = function(name) {
+        var id = "id" + name.replace(/\W/g, "");
+        return id;
+      }
 
 
       var xhr = d3.xhr(jsonUri);
@@ -91,7 +117,7 @@
         if (json[query]) {
           var l = Object.keys(json[query]);
           for (var h = 0; h < l.length; h++) {
-            var property = l[h] + ",x," + h;
+            var property = l[h] + "|x," + h;
             nodes[property] = {};
             nodes[property].type = "property";
             nodes[property].links = {};
@@ -101,8 +127,7 @@
               nodes[query].links[property] = 1;
             }
             var m = json[query][l[h]];
-            var len = Math.min(m.length, 200)
-            for (var g = 0; g < len; g++) {
+            for (var g = 0; g < m.length; g++) {
               if(!nodes[m[g].value]) {
                 nodes[m[g].value] = {};
                 nodes[m[g].value].links = {};
@@ -122,8 +147,7 @@
             }
           }
         }
-        len = Math.min(k.length, 200);
-        for (var i = 0; i < len; i++) {
+        for (var i = 0; i < k.length; i++) {
           if (!nodes[k[i]]) {
             nodes[k[i]] = {};
             nodes[k[i]].type = k[i].substring(0,1) == "_"?"bnode":"uri";
@@ -132,7 +156,11 @@
           var l = Object.keys(json[k[i]]);
           for (var h = 0; h < l.length; h++) {
             if (k[i] !=  query) {
-              property = l[h] + "," + i + "," + h;
+              if (json[k[i]][l[h]].length == 1) {
+                property = l[h] + "|" + json[k[i]][l[h]][0].value;
+              } else {
+                property = l[h] + "|" + i + "," + h;
+              }
               nodes[property] = {};
               nodes[property].type = "property";
               nodes[property].links = {};
@@ -168,7 +196,10 @@
         var links = [];
         var gNodeList = Object.keys(nodes);
         for (var i = 0; i < gNodeList.length; i++) {
-          graphNodes[i] = {"name":gNodeList[i].replace(/,(,|\d|x)+$/,''),"group":nodeTypes.indexOf(nodes[gNodeList[i]].type)};
+          graphNodes[i] = {"name":gNodeList[i],"group":nodeTypes.indexOf(nodes[gNodeList[i]].type)};
+          if (graphNodes[i].name == query) {
+            graphNodes[i].weight = 1000;
+          }
           var ln = Object.keys(nodes[gNodeList[i]].links);
           for (var j = 0; j < ln.length; j++) {
             links.push({"source":i,"target":gNodeList.indexOf(ln[j]),"value":nodes[gNodeList[i]].links[ln[j]]});
@@ -197,7 +228,7 @@
         var link = svg.selectAll(".link")
           .data(links)
         .enter().append("line")
-          .attr("class", "link")
+          .attr("class", function(d) {return "link " + makeId(d.source.name) + " " + makeId(d.target.name)})
           .attr("marker-end", "url(#end)")
           .style("stroke-width", function(d) { return Math.sqrt(d.value); });
 
@@ -206,6 +237,7 @@
           .enter().append("g")
             .each(function(d, i) {
               var g = d3.select(this);
+              g.attr("id", function(d) {return makeId(d.name)});
               var c;
               if (nodeTypes[d.group] == "uri") {
                 c =  g.append("a")
@@ -214,7 +246,7 @@
               } else {
                 c = g.append("circle");
               }
-              c.attr("class", "node");
+              c.attr("class", function(d) { return "node " + makeId(d.name)});
 
 
               if (nodeTypes[d.group] == "center") {
@@ -233,17 +265,30 @@
           .attr("rx",3)
           .attr("ry",3);
 
-        node.append("text")
+        node.append("foreignObject")
           .attr("class","label")
           .attr("dx", 14)
           .attr("dy",".5em")
-          .text(function(d) {
-              if (nodeTypes[d.group] == "bnode") {
-                return "_blank";
-              } else {
-                return d.name;
-              }
-            });
+          .attr("width", "20em")
+          .attr("height","200px")
+          .append("xhtml:html")
+          .append("body")
+          .append("span")
+          .each(function(d, i) {
+            var span = d3.select(this);
+            var name = d.name.replace(/\|.+$/,'')
+            if ((nodeTypes[d.group] == "uri" || nodeTypes[d.group] == "center") && d.name.match(/^http/)) {
+              span.append("a")
+                .attr("href", name)
+                .attr("target", "_blank")
+                .text(d.name);
+            } else if (nodeTypes[d.group] == "bnode") {
+              span.text("_bnode");
+            } else {
+              span.text(name);
+            }
+          });
+
 
         node.on("mouseover", mouseover);
         node.on("mouseout", mouseout);
@@ -270,23 +315,25 @@
 
       var mouseover = function () {
         var g = d3.select(this);
-        var t = g.select("text");
+        var t = d3.select(g.node().lastElementChild);
         t.attr("class","showlabel");
-        g.select("rect")
+        /*g.select("rect")
           .attr("class","showlabelbg")
           .attr("width",t.node().getBBox().width + 8)
-          .attr("height", t.node().getBBox().height + 8);
+          .attr("height", t.node().getBBox().height + 8);*/
         var n = g.node();
         var parent = n.parentNode;
         parent.removeChild(n);
         parent.appendChild(n);
-
+        d3.selectAll("." + g.attr("id"))
+          .classed("highlight", true);
       }
 
       var mouseout = function() {
         var g = d3.select(this);
-        g.select("rect").attr("class","labelbg");
-        g.select("text").attr("class","label");
+        d3.select(g.node().lastElementChild).attr("class","label");
+        d3.selectAll("." + g.attr("id"))
+          .classed("highlight", false);
       }
 
     </script>
